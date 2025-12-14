@@ -16,14 +16,14 @@ export async function createClient() {
           try {
             cookieStore.set({ name, value, ...options });
           } catch (error) {
-            // Server component can't set cookies
+            // Server component
           }
         },
         remove(name: string, options: CookieOptions) {
           try {
             cookieStore.set({ name, value: '', ...options });
           } catch (error) {
-            // Server component can't remove cookies
+            // Server component
           }
         },
       },
