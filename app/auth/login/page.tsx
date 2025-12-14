@@ -1,52 +1,73 @@
-import React, { useState } from 'react';
+'use client';
+
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { createClient } from '@/lib/supabase/client';
+import { trackDeviceFingerprint } from '@/lib/utils/fingerprint';
 import { Sparkles, Mail, Lock, Eye, EyeOff, ArrowRight, Loader2, Github } from 'lucide-react';
 
 export default function LoginPage() {
+  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const handleEmailLogin = async (e) => {
-    e.preventDefault();
+  const supabase = createClient();
+
+  const handleEmailLogin = async () => {
+    if (!email || !password) {
+      setError('Please fill in all fields');
+      return;
+    }
+
     setLoading(true);
     setError('');
 
     try {
-      // TODO: Implement Supabase auth
-      // const { data, error } = await supabase.auth.signInWithPassword({
-      //   email,
-      //   password
-      // });
-      
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // Mock success - redirect to dashboard
-      console.log('Login successful!');
-      // window.location.href = '/dashboard';
-      
-    } catch (err) {
-      setError('Invalid email or password. Please try again.');
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (signInError) throw signInError;
+
+      if (data.user) {
+        // Track device fingerprint
+        await trackDeviceFingerprint(data.user.id);
+
+        // Update last login
+        await fetch('/api/auth/update-login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: data.user.id }),
+        });
+
+        router.push('/dashboard');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Invalid email or password');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSocialLogin = async (provider) => {
+  const handleSocialLogin = async (provider: 'google' | 'github') => {
     setLoading(true);
     setError('');
-    
+
     try {
-      // TODO: Implement social login
-      // const { data, error } = await supabase.auth.signInWithOAuth({
-      //   provider: provider
-      // });
-      
-      console.log(`Login with ${provider}`);
-    } catch (err) {
-      setError(`Failed to login with ${provider}`);
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: {
+          redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback`,
+        },
+      });
+
+      if (error) throw error;
+    } catch (err: any) {
+      setError(err.message);
     } finally {
       setLoading(false);
     }
@@ -54,15 +75,12 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-6">
-      {/* Background Effects */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-500/20 rounded-full blur-3xl"></div>
         <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-pink-500/20 rounded-full blur-3xl"></div>
       </div>
 
-      {/* Login Card */}
       <div className="relative w-full max-w-md">
-        {/* Logo */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2 mb-4">
             <Sparkles className="w-10 h-10 text-purple-400" />
@@ -74,9 +92,7 @@ export default function LoginPage() {
           <p className="text-gray-400">Sign in to continue creating magic</p>
         </div>
 
-        {/* Login Form */}
         <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-8 border border-white/20 shadow-2xl">
-          {/* Error Message */}
           {error && (
             <div className="mb-6 p-4 bg-red-500/20 border border-red-500/50 rounded-lg text-red-200 text-sm">
               {error}
@@ -84,11 +100,8 @@ export default function LoginPage() {
           )}
 
           <div className="space-y-6">
-            {/* Email Field */}
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Email Address
-              </label>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Email Address</label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
@@ -97,16 +110,13 @@ export default function LoginPage() {
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@example.com"
                   className="w-full pl-12 pr-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 transition-all"
-                  required
+                  onKeyPress={(e) => e.key === 'Enter' && handleEmailLogin()}
                 />
               </div>
             </div>
 
-            {/* Password Field */}
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Password
-              </label>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Password</label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
@@ -115,30 +125,28 @@ export default function LoginPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter your password"
                   className="w-full pl-12 pr-12 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 transition-all"
-                  required
+                  onKeyPress={(e) => e.key === 'Enter' && handleEmailLogin()}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-300 transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-300"
                 >
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
               </div>
             </div>
 
-            {/* Remember & Forgot */}
             <div className="flex items-center justify-between text-sm">
               <label className="flex items-center gap-2 text-gray-300 cursor-pointer">
-                <input type="checkbox" className="w-4 h-4 rounded border-gray-600 bg-white/5" />
+                <input type="checkbox" className="w-4 h-4 rounded" />
                 Remember me
               </label>
-              <a href="/forgot-password" className="text-purple-400 hover:text-purple-300 transition-colors">
+              <a href="/forgot-password" className="text-purple-400 hover:text-purple-300">
                 Forgot password?
               </a>
             </div>
 
-            {/* Submit Button */}
             <button
               onClick={handleEmailLogin}
               disabled={loading}
@@ -158,19 +166,17 @@ export default function LoginPage() {
             </button>
           </div>
 
-          {/* Divider */}
           <div className="my-6 flex items-center gap-4">
             <div className="flex-1 h-px bg-white/10"></div>
             <span className="text-sm text-gray-400">OR</span>
             <div className="flex-1 h-px bg-white/10"></div>
           </div>
 
-          {/* Social Login */}
           <div className="space-y-3">
             <button
               onClick={() => handleSocialLogin('google')}
               disabled={loading}
-              className="w-full py-3 bg-white hover:bg-gray-100 text-gray-900 rounded-lg font-semibold flex items-center justify-center gap-3 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full py-3 bg-white hover:bg-gray-100 text-gray-900 rounded-lg font-semibold flex items-center justify-center gap-3 transition-all"
             >
               <svg className="w-5 h-5" viewBox="0 0 24 24">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -184,30 +190,27 @@ export default function LoginPage() {
             <button
               onClick={() => handleSocialLogin('github')}
               disabled={loading}
-              className="w-full py-3 bg-gray-800 hover:bg-gray-700 text-white rounded-lg font-semibold flex items-center justify-center gap-3 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full py-3 bg-gray-800 hover:bg-gray-700 text-white rounded-lg font-semibold flex items-center justify-center gap-3 transition-all"
             >
               <Github className="w-5 h-5" />
               Continue with GitHub
             </button>
           </div>
 
-          {/* Sign Up Link */}
           <div className="mt-6 text-center text-sm text-gray-400">
             Don't have an account?{' '}
-            <a href="/register" className="text-purple-400 hover:text-purple-300 font-semibold transition-colors">
+            <a href="/register" className="text-purple-400 hover:text-purple-300 font-semibold">
               Sign up for free
             </a>
           </div>
         </div>
 
-        {/* Footer */}
         <div className="mt-6 text-center text-xs text-gray-500">
           By continuing, you agree to our{' '}
-          <a href="/terms" className="text-gray-400 hover:text-gray-300 underline">Terms of Service</a>
-          {' '}and{' '}
-          <a href="/privacy" className="text-gray-400 hover:text-gray-300 underline">Privacy Policy</a>
+          <a href="/terms" className="underline">Terms</a> and{' '}
+          <a href="/privacy" className="underline">Privacy Policy</a>
         </div>
       </div>
     </div>
   );
-                  }
+}
