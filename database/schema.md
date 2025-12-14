@@ -843,3 +843,89 @@ CREATE TABLE storage_usage (
   storage_tier TEXT DEFAULT 'hot',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Device Tracking
+CREATE TABLE device_tracking (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  device_fingerprint TEXT NOT NULL,
+  ip_address INET NOT NULL,
+  user_agent TEXT,
+  last_seen_at TIMESTAMPTZ DEFAULT NOW(),
+  trust_score INT DEFAULT 50, -- 0-100
+  is_suspicious BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_device_fingerprint ON device_tracking(device_fingerprint);
+CREATE INDEX idx_ip_address ON device_tracking(ip_address);
+
+-- IP Rate Limiting
+CREATE TABLE ip_rate_limits (
+  ip_address INET PRIMARY KEY,
+  daily_usage INT DEFAULT 0,
+  last_reset_date DATE DEFAULT CURRENT_DATE,
+  is_blocked BOOLEAN DEFAULT false,
+  block_reason TEXT,
+  blocked_until TIMESTAMPTZ
+);
+
+-- Abuse Reports
+CREATE TABLE abuse_reports (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES profiles(id),
+  report_type TEXT CHECK (report_type IN ('multiple_accounts', 'spam', 'suspicious_pattern', 'vpn_abuse')),
+  evidence JSONB,
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'reviewed', 'actioned', 'dismissed')),
+  reviewed_by UUID REFERENCES profiles(id),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  reviewed_at TIMESTAMPTZ
+);
+
+-- User Trust Score
+ALTER TABLE profiles ADD COLUMN trust_score INT DEFAULT 50 CHECK (trust_score >= 0 AND trust_score <= 100);
+ALTER TABLE profiles ADD COLUMN account_age_days INT GENERATED ALWAYS AS (EXTRACT(DAY FROM NOW() - created_at)) STORED;
+ALTER TABLE profiles ADD COLUMN is_verified BOOLEAN DEFAULT false;
+ALTER TABLE profiles ADD COLUMN phone_number TEXT;
+ALTER TABLE profiles ADD COLUMN phone_verified BOOLEAN DEFAULT false;
+
+-- Function: Calculate trust score
+CREATE OR REPLACE FUNCTION calculate_trust_score(user_uuid UUID)
+RETURNS INT AS $$
+DECLARE
+  score INT := 50;
+  days_old INT;
+  gen_count INT;
+  device_count INT;
+BEGIN
+  -- Get account age
+  SELECT account_age_days INTO days_old FROM profiles WHERE id = user_uuid;
+  
+  -- Get generation count
+  SELECT COUNT(*) INTO gen_count FROM generations WHERE user_id = user_uuid;
+  
+  -- Get device count
+  SELECT COUNT(DISTINCT device_fingerprint) INTO device_count 
+  FROM device_tracking WHERE user_id = user_uuid;
+  
+  -- Calculate score
+  score := score + LEAST(days_old, 30); -- +1 per day, max +30
+  score := score + LEAST(gen_count / 10, 20); -- +1 per 10 generations, max +20
+  
+  -- Penalties
+  IF device_count > 3 THEN
+    score := score - 20; -- Multiple devices suspicious
+  END IF;
+  
+  -- Bonuses
+  IF EXISTS (SELECT 1 FROM profiles WHERE id = user_uuid AND is_email_verified) THEN
+    score := score + 10;
+  END IF;
+  
+  IF EXISTS (SELECT 1 FROM profiles WHERE id = user_uuid AND phone_verified) THEN
+    score := score + 10;
+  END IF;
+  
+  RETURN GREATEST(0, LEAST(100, score)); -- Clamp between 0-100
+END;
+$$ LANGUAGE plpgsql;
