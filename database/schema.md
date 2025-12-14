@@ -829,3 +829,17 @@ For issues or questions:
 ---
 
 **✅ Ready to use! Copy everything above and paste into Supabase SQL Editor.**
+
+-- Add to profiles table
+ALTER TABLE profiles ADD COLUMN storage_used_bytes BIGINT DEFAULT 0;
+ALTER TABLE profiles ADD COLUMN storage_quota_bytes BIGINT DEFAULT 52428800; -- 50MB for free
+
+-- Add storage tracking
+CREATE TABLE storage_usage (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  file_type TEXT NOT NULL,
+  file_size_bytes BIGINT NOT NULL,
+  storage_tier TEXT DEFAULT 'hot',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
