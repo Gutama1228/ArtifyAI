@@ -15,16 +15,21 @@ const nextConfig = {
     ],
   },
 
-  experimental: {
-    serverActions: true,
-  },
+  // Server Actions are enabled by default in Next.js 14
+  // No need to specify experimental.serverActions anymore
 
-  // Ignore TypeScript errors during build (only for development)
+  // Production optimizations
+  swcMinify: true,
+  
+  // Disable type checking during build (optional - remove for stricter checks)
   typescript: {
     ignoreBuildErrors: false,
   },
   
   eslint: {
+    // Only run ESLint on these directories during production builds
+    dirs: ['app', 'components', 'lib'],
+    // Warning: This allows production builds to complete even if ESLint errors exist
     ignoreDuringBuilds: false,
   },
 };
