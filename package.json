@@ -1,14 +1,12 @@
 {
   "name": "artify-ai",
   "version": "2.0.0",
-  "description": "AI-powered image generation platform",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
-    "type-check": "tsc --noEmit"
+    "lint": "next lint"
   },
   "dependencies": {
     "next": "^14.2.0",
